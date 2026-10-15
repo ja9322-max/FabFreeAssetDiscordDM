@@ -68,5 +68,7 @@ func (r rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.URL.Scheme = "http"
 	}
 	req.URL.Host = strings.TrimPrefix(strings.TrimPrefix(r.base, "https://"), "http://")
+	req.URL.Path = strings.TrimPrefix(req.URL.Path, "/api/v10")
 	return r.transport.RoundTrip(req)
 }
+
