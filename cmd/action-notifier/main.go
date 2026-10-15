@@ -36,9 +36,9 @@ func main() {
 
 func run(ctx context.Context, getenv func(string) string, client *http.Client) error {
 	token := strings.TrimSpace(getenv("DISCORD_BOT_TOKEN"))
-	userID := strings.TrimSpace(getenv("DISCORD_USER_ID"))
-	if token == "" || userID == "" {
-		return errors.New("DISCORD_BOT_TOKEN and DISCORD_USER_ID are required")
+	userIDs := recipientIDs(getenv("DISCORD_USER_IDS"), getenv("DISCORD_USER_ID"))
+	if token == "" || len(userIDs) == 0 {
+		return errors.New("DISCORD_BOT_TOKEN and at least one Discord user ID are required")
 	}
 
 	statePath := strings.TrimSpace(getenv("STATE_PATH"))
@@ -63,15 +63,28 @@ func run(ctx context.Context, getenv func(string) string, client *http.Client) e
 	}
 	newAssets := unseen(current, previous.Seen)
 	if len(newAssets) > 0 {
-		if err := sendDM(ctx, client, token, userID, formatMessage(newAssets)); err != nil {
-			return err
+		for _, userID := range userIDs {
+			if err := sendDM(ctx, client, token, userID, formatMessage(newAssets)); err != nil {
+				return fmt.Errorf("send DM to %s: %w", userID, err)
+			}
 		}
-		fmt.Printf("Sent %d new asset(s).\n", len(newAssets))
+		fmt.Printf("Sent %d new asset(s) to %d user(s).\n", len(newAssets), len(userIDs))
 	} else {
 		fmt.Println("No new assets.")
 	}
 
 	return saveState(statePath, append(previous.Seen, assetLinks(current)...))
+}
+
+func recipientIDs(values ...string) []string {
+	var ids []string
+	for _, value := range values {
+		ids = append(ids, strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ';' || r == '\n' })...)
+	}
+	for i := range ids {
+		ids[i] = strings.TrimSpace(ids[i])
+	}
+	return unique(ids)
 }
 
 func loadState(path string) (state, error) {

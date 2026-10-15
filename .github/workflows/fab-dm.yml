@@ -34,6 +34,7 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
+          DISCORD_USER_IDS: ${{ secrets.DISCORD_USER_IDS }}
         run: go run ./cmd/action-notifier
       - name: Save notification state
         if: github.event_name != 'push'

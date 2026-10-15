@@ -17,6 +17,13 @@ func TestUnseen(t *testing.T) {
 	}
 }
 
+func TestRecipientIDs(t *testing.T) {
+	got := recipientIDs("42, 43\n42", "44")
+	if strings.Join(got, ",") != "42,43,44" {
+		t.Fatalf("recipientIDs() = %#v", got)
+	}
+}
+
 func TestSendDM(t *testing.T) {
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
