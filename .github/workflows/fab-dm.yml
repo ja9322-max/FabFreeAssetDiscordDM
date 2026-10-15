@@ -6,6 +6,11 @@ on:
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
+    inputs:
+      send_test_message:
+        description: Send a test DM even when there are no new assets
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -35,6 +40,7 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
           DISCORD_USER_IDS: ${{ secrets.DISCORD_USER_IDS }}
+          SEND_TEST_DM: ${{ inputs.send_test_message }}
         run: go run ./cmd/action-notifier
       - name: Save notification state
         if: github.event_name != 'push'

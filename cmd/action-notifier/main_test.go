@@ -62,6 +62,27 @@ func TestSendDM(t *testing.T) {
 	}
 }
 
+func TestRunTestDM(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/users/@me/channels":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"dm-1"}`))
+		case "/channels/dm-1/messages":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	values := map[string]string{"DISCORD_BOT_TOKEN": "secret", "DISCORD_USER_IDS": "42,43", "SEND_TEST_DM": "true"}
+	client := &http.Client{Transport: rewriteTransport{base: server.URL, transport: http.DefaultTransport}}
+	if err := run(context.Background(), func(key string) string { return values[key] }, client); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type rewriteTransport struct {
 	base      string
 	transport http.RoundTripper

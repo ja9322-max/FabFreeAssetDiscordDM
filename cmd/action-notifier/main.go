@@ -40,6 +40,15 @@ func run(ctx context.Context, getenv func(string) string, client *http.Client) e
 	if token == "" || len(userIDs) == 0 {
 		return errors.New("DISCORD_BOT_TOKEN and at least one Discord user ID are required")
 	}
+	if strings.EqualFold(strings.TrimSpace(getenv("SEND_TEST_DM")), "true") {
+		for _, userID := range userIDs {
+			if err := sendDM(ctx, client, token, userID, "✅ Fab 무료 에셋 알림 봇 테스트가 성공했습니다."); err != nil {
+				return fmt.Errorf("send test DM to %s: %w", userID, err)
+			}
+		}
+		fmt.Printf("Sent a test DM to %d user(s).\n", len(userIDs))
+		return nil
+	}
 
 	statePath := strings.TrimSpace(getenv("STATE_PATH"))
 	if statePath == "" {
