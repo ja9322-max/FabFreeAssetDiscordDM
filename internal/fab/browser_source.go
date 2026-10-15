@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 const browserOverrideEnv = "ASSETS_BOT_BROWSER"

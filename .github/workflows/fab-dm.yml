@@ -28,7 +28,7 @@ jobs:
         run: go test ./...
       - name: Install Firefox
         if: github.event_name != 'push'
-        run: go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps firefox
+        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps firefox
       - name: Check Fab and send DM
         if: github.event_name != 'push'
         env:
