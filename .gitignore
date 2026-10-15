@@ -1,0 +1,38 @@
+# Cache
+.*/
+!.github/
+!.github/workflows/
+!.github/workflows/fab-dm.yml
+
+# Build outputs
+/bin/
+*.exe
+*.test
+*.out
+*.dll
+
+# Logs and local runtime data
+*.log
+bot.log
+data/
+!data/
+data/*
+!data/seen-assets.json
+*.db
+*.db-shm
+*.db-wal
+*.png
+
+# Environment files
+.env
+.env.*
+
+# Coverage
+.coverprofile
+coverage.out
+
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
