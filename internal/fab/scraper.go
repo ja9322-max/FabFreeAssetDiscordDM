@@ -88,8 +88,14 @@ func NewScraper(source HTMLSource) *Scraper {
 }
 
 func defaultBackoff(attempt int) time.Duration {
-	_ = attempt
-	return 5 * time.Second
+	delay := 5 * time.Second
+	for i := 1; i < attempt && delay < 60*time.Second; i++ {
+		delay *= 2
+	}
+	if delay > 60*time.Second {
+		delay = 60*time.Second
+	}
+	return delay
 }
 
 // GetFreeAssets returns the parsed assets and deadline.
@@ -108,57 +114,41 @@ func (s *Scraper) GetFreeAssets(ctx context.Context) ([]Asset, *DeadlineInfo, er
 	}
 
 	for attempt := 1; attempt <= retries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		htmlDoc, err := s.fetchDocument(ctx)
-		if err != nil {
-			if attempt == retries {
-				log.Printf("Failed to fetch Limited-Time Free assets after several attempts.")
-				return nil, nil, err
-			}
-			log.Printf("Homepage parse error: %v. Retrying %d/%d...", err, attempt, retries)
-			if sleep := s.backoffDuration(attempt); sleep > 0 {
-				if err := sleepContext(ctx, sleep); err != nil {
-					return nil, nil, err
-				}
-			}
-			continue
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
 		}
-
-		result, err := ParseFreeAssets(htmlDoc)
-		if err != nil {
-			if attempt == retries {
-				log.Printf("Failed to fetch Limited-Time Free assets after several attempts.")
-				return nil, nil, err
+		stage := "fetch"
+		if err == nil {
+			stage = "parse"
+			var result Result
+			result, err = ParseFreeAssets(htmlDoc)
+			if err == nil && result.Found {
+				log.Printf("Collected %d listing cards from homepage (attempt %d/%d).", len(result.Assets), attempt, retries)
+				return result.Assets, result.Deadline, nil
 			}
-			log.Printf("Homepage parse error: %v. Retrying %d/%d...", err, attempt, retries)
-			if sleep := s.backoffDuration(attempt); sleep > 0 {
-				if err := sleepContext(ctx, sleep); err != nil {
-					return nil, nil, err
-				}
+			if err == nil {
+				err = ErrLimitedTimeFreeNotFound
 			}
-			continue
 		}
-
-		if result.Found {
-			if len(result.Assets) == 0 {
-				log.Printf("Limited-Time Free section is empty on homepage.")
-			} else {
-				log.Printf("Collected %d listing cards from homepage.", len(result.Assets))
-			}
-			return result.Assets, result.Deadline, nil
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
 		}
-
+		if errors.Is(err, context.Canceled) {
+			return nil, nil, err
+		}
 		if attempt == retries {
-			log.Printf("Failed to fetch Limited-Time Free assets after several attempts.")
-			return nil, nil, ErrLimitedTimeFreeNotFound
+			return nil, nil, fmt.Errorf("fab: %s failed after %d attempts: %w", stage, attempt, err)
 		}
-		log.Printf("'Limited-Time Free' section not found. Attempt %d/%d", attempt, retries)
-		if sleep := s.backoffDuration(attempt); sleep > 0 {
-			if err := sleepContext(ctx, sleep); err != nil {
-				return nil, nil, err
-			}
+		delay := s.backoffDuration(attempt)
+		log.Printf("Homepage %s failed (attempt %d/%d): %v; retrying in %s", stage, attempt, retries, err, delay)
+		if err := sleepContext(ctx, delay); err != nil {
+			return nil, nil, err
 		}
 	}
-
 	return nil, nil, ErrLimitedTimeFreeNotFound
 }
 
@@ -169,6 +159,7 @@ func GetFreeAssets(ctx context.Context, retries int) ([]Asset, *DeadlineInfo, er
 	if err != nil {
 		return nil, nil, err
 	}
+	defer source.Close()
 	return NewScraper(source).WithRetries(retries).GetFreeAssets(ctx)
 }
 

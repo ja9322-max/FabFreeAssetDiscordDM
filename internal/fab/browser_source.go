@@ -27,6 +27,8 @@ type BrowserSource struct {
 	URL           string
 	UserAgent     string
 	Timeout       time.Duration
+	RenderTimeout time.Duration
+	// PostLoadDelay is the minimum time the populated section must remain stable.
 	PostLoadDelay time.Duration
 
 	mu      sync.Mutex
@@ -45,6 +47,7 @@ func NewBrowserSource() (*BrowserSource, error) {
 		URL:           defaultHomepageURL,
 		UserAgent:     defaultBrowserUserAgent,
 		Timeout:       60 * time.Second,
+		RenderTimeout: 30 * time.Second,
 		PostLoadDelay: 1500 * time.Millisecond,
 	}, nil
 }
@@ -52,6 +55,10 @@ func NewBrowserSource() (*BrowserSource, error) {
 func (s *BrowserSource) Fetch(ctx context.Context) (document string, err error) {
 	if s == nil {
 		return "", fmt.Errorf("fab: browser source is not initialized")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 
 	browserPath := strings.TrimSpace(s.BrowserPath)
@@ -83,8 +90,16 @@ func (s *BrowserSource) Fetch(ctx context.Context) (document string, err error) 
 		postLoadDelay = 1500 * time.Millisecond
 	}
 
+	renderTimeout := s.RenderTimeout
+	if renderTimeout <= 0 {
+		renderTimeout = 30 * time.Second
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
 	browser, err := s.ensureBrowserLocked(browserPath)
 	if err != nil {
@@ -103,9 +118,15 @@ func (s *BrowserSource) Fetch(ctx context.Context) (document string, err error) 
 		s.resetLocked()
 		return "", fmt.Errorf("fab: create firefox context: %w", err)
 	}
+	// Closing the per-fetch context interrupts Playwright calls on cancellation.
+	var closeOnce sync.Once
+	closeContext := func() { closeOnce.Do(func() { _ = browserContext.Close() }) }
+	stopCancel := context.AfterFunc(ctx, closeContext)
 	defer func() {
-		if closeErr := browserContext.Close(); err == nil && closeErr != nil {
-			err = fmt.Errorf("fab: close firefox context: %w", closeErr)
+		stopCancel()
+		closeContext()
+		if ctx.Err() != nil {
+			document, err = "", ctx.Err()
 		}
 	}()
 
@@ -123,25 +144,26 @@ func (s *BrowserSource) Fetch(ctx context.Context) (document string, err error) 
 	}
 
 	log.Printf("Loading homepage...")
-	if _, err := page.Goto(url, playwright.PageGotoOptions{
+	response, err := page.Goto(url, playwright.PageGotoOptions{
 		Timeout:   playwright.Float(float64(timeout.Milliseconds())),
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-	}); err != nil {
-		s.resetLocked()
+	})
+	if err != nil {
 		return "", fmt.Errorf("fab: navigate homepage: %w", err)
 	}
-
-	if err := sleepContext(ctx, postLoadDelay); err != nil {
-		return "", err
+	if response == nil {
+		return "", fmt.Errorf("fab: homepage navigation returned no HTTP response (url=%q)", page.URL())
+	}
+	status := response.Status()
+	if status < 200 || status >= 300 {
+		return "", fmt.Errorf("fab: homepage HTTP status=%d url=%q", status, page.URL())
 	}
 
-	document, err = page.Content()
+	document, err = waitForFreeSection(ctx, page.Content, renderTimeout, postLoadDelay, 250*time.Millisecond)
 	if err != nil {
-		s.resetLocked()
-		return "", fmt.Errorf("fab: read homepage HTML: %w", err)
-	}
-	if strings.TrimSpace(document) == "" {
-		return "", fmt.Errorf("fab: browser fetch returned empty document")
+		title, _ := page.Title()
+		return "", fmt.Errorf("fab: wait for rendered homepage (status=%d url=%q title=%q bytes=%d): %w",
+			status, page.URL(), title, len(document), err)
 	}
 
 	return document, nil
