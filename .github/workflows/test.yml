@@ -1,0 +1,28 @@
+name: Scraper tests
+
+on:
+  pull_request:
+  push:
+    branches: ["fix/fab-render-readiness"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Unit tests and race checks
+        run: go test -race ./...
+      - name: Install Firefox
+        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps firefox
+      - name: Browser regression tests (local fixtures only)
+        env:
+          FAB_BROWSER_TESTS: "1"
+        run: go test -race ./internal/fab -run TestBrowserSourceIntegration -count=1 -v
