@@ -55,7 +55,7 @@ func run(ctx context.Context, getenv func(string) string, client *http.Client) e
 		statePath = "data/seen-assets.json"
 	}
 
-	scraped, _, err := fab.GetFreeAssets(ctx, 3)
+	scraped, _, err := fab.GetFreeAssets(ctx, 5)
 	if err != nil {
 		return fmt.Errorf("fetch Fab assets: %w", err)
 	}
